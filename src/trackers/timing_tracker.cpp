@@ -1,0 +1,66 @@
+#include "ads_psf/trackers/timing_tracker.h"
+#include "ads_psf/processor_info.h"
+#include <algorithm>
+#include <iostream>
+#include <vector>
+
+namespace ads_psf {
+
+void TimingTracker::TrackEnter(const ProcessorInfo& info) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto now = std::chrono::high_resolution_clock::now();
+    timingData_[info.id] = std::make_pair(now, std::chrono::nanoseconds(0));
+}
+
+void TimingTracker::TrackExit(const ProcessorInfo& info, ProcessStatus status) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto now = std::chrono::high_resolution_clock::now();
+    auto it = timingData_.find(info.id);
+    if (it != timingData_.end()) {
+        auto duration = now - it->second.first;
+        it->second.second = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
+    }
+}
+
+void TimingTracker::Dump() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::cout << "\n======= Processor Timing Statistics =======\n";
+    
+    ProcessorId rootId = ProcessorId::Root();
+    if (timingData_.find(rootId) == timingData_.end()) {
+        std::cout << "No timing data available!\n";
+        return;
+    } 
+    DumpProcessor(rootId, 0);
+}
+
+void TimingTracker::DumpProcessor(const ProcessorId& id, int level) const {
+    auto timingIt = timingData_.find(id);
+
+    if (timingIt == timingData_.end()) {
+        std::cout << "No timing data find for id << " << id.ToString() << " in level " << level << "!\n";
+        return;
+    }
+
+    double ms = timingIt->second.second.count() / 1'000'000.0;
+    std::string indent(level * 2, ' ');
+    std::cout << indent << "[" << id.ToString() << "]: " << ms << " ms\n";
+    
+    std::vector<ProcessorId> children;
+    for (const auto& [childId, _] : timingData_) {
+        if (childId.GetParent() == id) {
+            children.push_back(childId);
+        }
+    }
+
+    uint32_t childLevel = id.GetDepth();
+    std::sort(children.begin(), children.end(), [childLevel](const ProcessorId& a, const ProcessorId& b) {
+        return a.GetLevelValue(childLevel) < b.GetLevelValue(childLevel);
+    });
+    
+    for (const auto& childId : children) {
+        DumpProcessor(childId, level + 1);
+    }
+}
+
+} // namespace ads_psf

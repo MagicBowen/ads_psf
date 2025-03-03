@@ -1,0 +1,8 @@
+.cproject
+.project
+.DS_Store
+.idea/*
+.vscode/*
+.settings/*
+build/*
+cmake-build-debug/*
