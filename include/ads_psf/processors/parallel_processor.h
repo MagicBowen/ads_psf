@@ -2,7 +2,7 @@
 #define ADS_PSF_PARALLEL_PROCESSOR_H
 
 #include "ads_psf/processors/group_processor.h"
-#include "ads_psf/async_result.h"
+#include "ads_psf/process_result.h"
 
 namespace ads_psf {
 

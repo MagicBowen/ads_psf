@@ -5,10 +5,10 @@
 namespace ads_psf {
 
 ProcessStatus ParallelProcessor::Execute(ProcessContext& ctx) {
-    std::vector<std::future<AsyncResult>> futures;
+    std::vector<std::future<ProcessResult>> futures;
     for (auto& processor : processors_) {
         futures.emplace_back(std::async(std::launch::async, [&]() {
-            return AsyncResult(processor->GetId(), processor->Process(ctx));
+            return ProcessResult(processor->GetId(), processor->Process(ctx));
         }));
     }
 

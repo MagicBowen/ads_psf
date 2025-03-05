@@ -6,7 +6,7 @@
 namespace ads_psf {
 
 ProcessStatus RaceProcessor::Execute(ProcessContext& ctx) {
-    std::vector<std::future<AsyncResult>> futures;
+    std::vector<std::future<ProcessResult>> futures;
     std::promise<ProcessStatus> finalPromise;
     auto finalFuture = finalPromise.get_future();
 
@@ -20,7 +20,7 @@ ProcessStatus RaceProcessor::Execute(ProcessContext& ctx) {
                     finalPromise.set_value(status);
                 }
             }
-            return AsyncResult(processor->GetId(), status);
+            return ProcessResult(processor->GetId(), status);
         }));
     }
 

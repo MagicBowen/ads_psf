@@ -3,7 +3,7 @@
 
 #include "ads_psf/processors/data_group_processor.h"
 #include "ads_psf/data_parallel_id.h"
-#include "ads_psf/async_result.h"
+#include "ads_psf/process_result.h"
 #include <future>
 #include <vector>
 
@@ -17,12 +17,12 @@ private:
     using DataGroupProcessor<DTYPE, N>::processors_;
 
     ProcessStatus Execute(ProcessContext& ctx) override {
-        std::vector<std::future<AsyncResult>> futures;
+        std::vector<std::future<ProcessResult>> futures;
 
         for (int i = 0; i < processors_.size(); i++) {
             futures.emplace_back(std::async(std::launch::async, [&ctx, i, processor = processors_[i].get()]() {
                 data_parallel::AutoSwitchId<DTYPE> switcher(i);
-                return AsyncResult(processor->GetId(), processor->Process(ctx));
+                return ProcessResult(processor->GetId(), processor->Process(ctx));
             }));
         }
 
