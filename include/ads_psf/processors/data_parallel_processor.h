@@ -21,7 +21,7 @@ private:
 
         for (int i = 0; i < processors_.size(); i++) {
             futures.emplace_back(std::async(std::launch::async, [&ctx, i, processor = processors_[i].get()]() {
-                AutoSwitchParallelId<DTYPE> switcher(i);
+                data_parallel::AutoSwitchId<DTYPE> switcher(i);
                 return AsyncResult(processor->GetId(), processor->Process(ctx));
             }));
         }

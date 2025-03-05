@@ -1,13 +1,12 @@
 #include "catch2/catch.hpp"
-#include "ads_psf/scheduler.h"
-#include "ads_psf/data_context.h"
 #include "ads_psf/processor_dsl.h"
-#include "ads_psf/trackers/console_tracker.h"
-#include "ads_psf/trackers/timing_tracker.h"
+#include "ads_psf/data_context.h"
 #include "ads_psf/data_parallel_id.h"
 #include <iostream>
 #include <random>
 #include <thread>
+
+using namespace ads_psf;
 
 namespace {
     // DataContext 中跟踪算法执行过程的数据
@@ -73,7 +72,7 @@ namespace {
         void Init() {
         }
     
-        void Execute(ads_psf::DataContext& context) {
+        void Execute(DataContext& context) {
             std::this_thread::sleep_for(sleepTime_);
             
             auto tracker = context.Fetch<TestTracker>();
@@ -120,10 +119,10 @@ namespace {
 
     // 模拟业务数据并发读取的算法类
     struct DataReadAlgo : DataAccessAlgo {
-        void Execute(ads_psf::DataContext& context) {
+        void Execute(DataContext& context) {
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs_));
     
-            int instanceId = ads_psf::GetParallelId<MyDatas>();
+            int instanceId = data_parallel::ID<MyDatas>;
             auto& myDatas = *context.Fetch<MyDatas>();
     
             auto tracker = context.Fetch<TestTracker>();
@@ -138,10 +137,10 @@ namespace {
         void Init() {
         }
     
-        void Execute(ads_psf::DataContext& context) {
+        void Execute(DataContext& context) {
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs_));
             
-            int instanceId = ads_psf::GetParallelId<MyDatas>();
+            int instanceId = data_parallel::ID<MyDatas>;
             auto& myDatas = *context.Fetch<MyDatas>();
             
             auto tracker = context.Fetch<TestTracker>();
@@ -155,37 +154,96 @@ namespace {
 }
 
 TEST_CASE("Processor Test") {
+
     auto scheduler = SCHEDULE(
         SEQUENCE(
             PROCESS(MockAlgo1),
-            PARALLEL(
-                PROCESS(MockAlgo2),
-                PROCESS(MockAlgo3),
-                PARALLEL(
-                    PROCESS(MockAlgo4),
-                    RACE(
-                        PROCESS(MockAlgo5),
-                        SEQUENCE(
-                            PROCESS(MockAlgo6),
-                            PROCESS(MockAlgo7)
-                        )
-                    )
-                )
-            ),
-            PROCESS(MockAlgo8)
-        )
+            PROCESS(MockAlgo2),
+            PROCESS(MockAlgo3)
+        ), 
+        TRACK(ConsoleTracker), 
+        TRACK(TimingTracker)
     );
     
-    ads_psf::DataContext dataCtx;
+    DataContext dataCtx;
     dataCtx.Create<TestTracker>();
 
-    scheduler.AddTracker(std::make_unique<ads_psf::ConsoleTracker>());
-    scheduler.AddTracker(std::make_unique<ads_psf::TimingTracker>());
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
 
-    auto status = scheduler.Run(dataCtx);
-    REQUIRE(status == ads_psf::ProcessStatus::OK);
+    scheduler->Dump();
 
-    scheduler.Dump();
+    auto tracker = dataCtx.Fetch<TestTracker>();
+    REQUIRE(tracker->Size() == 3);
+    REQUIRE(tracker->KeyAt("MockAlgo1", 0));
+    REQUIRE(tracker->KeyAt("MockAlgo2", 1));
+    REQUIRE(tracker->KeyAt("MockAlgo3", 2));
+}
+
+TEST_CASE("Processor Ref Algo Test") {
+    MockAlgo1 algo1;
+    MockAlgo2 algo2;
+    MockAlgo3 algo3;
+
+    auto scheduler = SCHEDULE(
+        SEQUENCE(
+            PROCESS_REF(algo1),
+            PROCESS_REF(algo2),
+            PROCESS_REF(algo3)
+        ),
+        TRACK(ConsoleTracker), 
+        TRACK(TimingTracker)
+    );
+    
+    DataContext dataCtx;
+    dataCtx.Create<TestTracker>();
+
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
+
+    scheduler->Dump();
+
+    auto tracker = dataCtx.Fetch<TestTracker>();
+    REQUIRE(tracker->Size() == 3);
+    REQUIRE(tracker->KeyAt("MockAlgo1", 0));
+    REQUIRE(tracker->KeyAt("MockAlgo2", 1));
+    REQUIRE(tracker->KeyAt("MockAlgo3", 2));
+}
+
+
+TEST_CASE("Processor composite Test") {
+    auto processor = SEQUENCE(
+        PROCESS(MockAlgo1),
+        PARALLEL(
+            PROCESS(MockAlgo2),
+            PROCESS(MockAlgo3),
+            PARALLEL(
+                PROCESS(MockAlgo4),
+                RACE(
+                    PROCESS(MockAlgo5),
+                    SEQUENCE(
+                        PROCESS(MockAlgo6),
+                        PROCESS(MockAlgo7)
+                    )
+                )
+            )
+        ),
+        PROCESS(MockAlgo8)
+    );
+
+    auto scheduler = SCHEDULE(
+        processor, 
+        TRACK(ConsoleTracker), 
+        TRACK(TimingTracker)
+    );
+    
+    DataContext dataCtx;
+    dataCtx.Create<TestTracker>();
+
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
+
+    scheduler->Dump();
 
     auto tracker = dataCtx.Fetch<TestTracker>();
     REQUIRE(tracker->Size() == 7);
@@ -201,15 +259,18 @@ TEST_CASE("Processor Test") {
 
 TEST_CASE("DataParallelProcessor basic Test") {    
     auto scheduler = SCHEDULE(
-        DATA_PARALLEL(MyDatas, 5, PROCESS(DataReadAlgo))
+        DATA_PARALLEL(MyDatas, 5, PROCESS(DataReadAlgo)),
+        TRACK(TimingTracker)
     );
     
-    ads_psf::DataContext dataCtx;
+    DataContext dataCtx;
     dataCtx.Create<TestTracker>();
     dataCtx.Create<MyDatas>(1, 2, 3, 4, 5);
 
-    auto status = scheduler.Run(dataCtx);
-    REQUIRE(status == ads_psf::ProcessStatus::OK);
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
+
+    scheduler->Dump();
 
     auto tracker = dataCtx.Fetch<TestTracker>();
     REQUIRE(tracker->Size() == 5);
@@ -232,15 +293,18 @@ TEST_CASE("DataParallelProcessor complex Test") {
                 )
             ),
             PROCESS(MockAlgo3)
-        )
+        ),
+        TRACK(TimingTracker)
     );
     
-    ads_psf::DataContext dataCtx;
+    DataContext dataCtx;
     dataCtx.Create<TestTracker>();
     dataCtx.Create<MyDatas>(1, 2, 3);
 
-    auto status = scheduler.Run(dataCtx);
-    REQUIRE(status == ads_psf::ProcessStatus::OK);
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
+
+    scheduler->Dump();
 
     auto tracker = dataCtx.Fetch<TestTracker>();
     REQUIRE(tracker->Size() == 11);
@@ -265,15 +329,18 @@ TEST_CASE("DataRaceProcessor basic Test") {
                 PROCESS(DataWriteAlgo),
                 PROCESS(DataReadAlgo)
             )
-        )
+        ),
+        TRACK(TimingTracker)
     );
     
-    ads_psf::DataContext dataCtx;
+    DataContext dataCtx;
     dataCtx.Create<TestTracker>();
     dataCtx.Create<MyDatas>(1, 2, 3, 4, 5);
 
-    auto status = scheduler.Run(dataCtx);
-    REQUIRE(status == ads_psf::ProcessStatus::OK);
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
+
+    scheduler->Dump();
 
     auto tracker = dataCtx.Fetch<TestTracker>();
     REQUIRE(tracker->Size() > 5);
@@ -300,19 +367,18 @@ TEST_CASE("DataRaceProcessor complex Test") {
                 )
             ),
             PROCESS(MockAlgo3)
-        )
+        ),
+        TRACK(TimingTracker)
     );
 
-    scheduler.AddTracker(std::make_unique<ads_psf::TimingTracker>());
-
-    ads_psf::DataContext dataCtx;
+    DataContext dataCtx;
     dataCtx.Create<TestTracker>();
     dataCtx.Create<MyDatas>(1, 2, 3);
 
-    auto status = scheduler.Run(dataCtx);
-    REQUIRE(status == ads_psf::ProcessStatus::OK);
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
 
-    scheduler.Dump();
+    scheduler->Dump();
 
     auto tracker = dataCtx.Fetch<TestTracker>();
     REQUIRE(tracker->Size() > 6);

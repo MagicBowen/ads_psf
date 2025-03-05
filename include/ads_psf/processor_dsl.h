@@ -8,14 +8,22 @@
 #include "ads_psf/processors/data_group_processor.h"
 #include "ads_psf/processors/data_parallel_processor.h"
 #include "ads_psf/processors/data_race_processor.h"
+#include "ads_psf/trackers/console_tracker.h"
+#include "ads_psf/trackers/timing_tracker.h"
+#include "ads_psf/scheduler.h"
 #include <functional>
 #include <memory>
 
 namespace ads_psf {
 
 template<typename ALGO>
-std::unique_ptr<Processor> MakeProcessor(const std::string& name) {
+std::unique_ptr<Processor> MakeAlgoProcessor(const std::string& name) {
     return std::make_unique<AlgoProcessor<ALGO>>(name);
+}
+
+template<typename ALGO>
+std::unique_ptr<Processor> MakeAlgoProcessor(const std::string& name, ALGO& algo) {
+    return std::make_unique<AlgoProcessorRef<ALGO>>(name, algo);
 }
 
 template<typename GROUP_PROCESSOR, typename ...PROCESSORS>
@@ -30,10 +38,31 @@ std::unique_ptr<Processor> MakeDataGroupProcessor(const std::string& name, Proce
     return std::make_unique<DATA_PROCESSOR<DTYPE, N>>(name, factory);
 }
 
+template<typename PROCESSOR, typename ...TRACKERS>
+std::unique_ptr<Scheduler> MakeScheduler(PROCESSOR && rootProcessor, TRACKERS&& ...trackers) {
+    auto scheduler = std::make_unique<Scheduler>(std::forward<PROCESSOR>(rootProcessor));
+    (scheduler->AddTracker(std::forward<TRACKERS>(trackers)), ...);
+    return scheduler;
+}
+
+template<typename TRACKER, typename ...Args>
+std::unique_ptr<ProcessTracker> MakeTracker(Args&& ...args) {
+    return std::make_unique<TRACKER>(std::forward<Args>(args)...);
+}
+
 } // namespace ads_psf
 
+#define SCHEDULE(PROCESSOR, ...)        \
+ads_psf::MakeScheduler(std::move(PROCESSOR), ##__VA_ARGS__)
+
+#define TRACK(TRACKER, ...)             \
+ads_psf::MakeTracker<TRACKER>(##__VA_ARGS__)
+
 #define PROCESS(ALGO)                   \
-ads_psf::MakeProcessor<ALGO>(#ALGO)
+ads_psf::MakeAlgoProcessor<ALGO>(#ALGO)
+
+#define PROCESS_REF(ALGO_INST)          \
+ads_psf::MakeAlgoProcessor(#ALGO_INST, ALGO_INST)
 
 #define SEQUENCE(...)                   \
 ads_psf::MakeGroupProcessor<ads_psf::SequentialProcessor>("sequential", __VA_ARGS__)

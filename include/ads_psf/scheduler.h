@@ -23,6 +23,4 @@ private:
 
 } // namespace ads_psf
 
-#define SCHEDULE(...) ads_psf::Scheduler(__VA_ARGS__)
-
 #endif // ADS_PSF_SCHEDULER_H

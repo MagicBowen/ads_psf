@@ -5,28 +5,27 @@
 
 namespace ads_psf {
 
-template<typename T>
-thread_local uint32_t PARALLEL_ID = -1;
+namespace data_parallel {
 
 template<typename T>
-uint32_t GetParallelId() {
-    return PARALLEL_ID<T>;
-}
+thread_local uint32_t ID = -1;
 
 template<typename T>
-struct AutoSwitchParallelId {
-    AutoSwitchParallelId(uint32_t id) {
-        oriId_ = PARALLEL_ID<T>;
-        PARALLEL_ID<T> = id;
+struct AutoSwitchId {
+    AutoSwitchId(uint32_t id) {
+        oriId_ = ID<T>;
+        ID<T> = id;
     }
 
-    ~AutoSwitchParallelId() {
-        PARALLEL_ID<T> = oriId_;
+    ~AutoSwitchId() {
+        ID<T> = oriId_;
     }
 
 private:
     uint32_t oriId_;
 };
+
+} // namespace data_parallel
 
 } // namespace ads_psf
 

@@ -25,7 +25,7 @@ private:
 
         for (int i = 0; i < processors_.size(); i++) {
             futures.emplace_back(std::async(std::launch::async, [&, i, processor = processors_[i].get()]() {
-                AutoSwitchParallelId<DTYPE> switcher(i);
+                data_parallel::AutoSwitchId<DTYPE> switcher(i);
                 ProcessStatus status = processor->Process(innerCtx);
                 if (status == ProcessStatus::OK) {
                     if (innerCtx.TryStop()) {
