@@ -12,8 +12,8 @@ struct AlgoProcessor : Processor {
     using Processor::Processor;
 
 private:
-    void Init(const ProcessorInfo& parentInfo, uint32_t childIndex) override {
-        Processor::Init(parentInfo, childIndex);
+    void Init(const ProcessorInfo& parentInfo, uint32_t childIndex, AsyncExecutor& executor) override {
+        Processor::Init(parentInfo, childIndex, executor);
         algo_.Init();
     }
 
@@ -32,8 +32,8 @@ struct AlgoProcessorRef : Processor {
     : Processor{name}, algo_{algo} {}
 
 private:
-    void Init(const ProcessorInfo& parentInfo, uint32_t childIndex) override {
-        Processor::Init(parentInfo, childIndex);
+    void Init(const ProcessorInfo& parentInfo, uint32_t childIndex, AsyncExecutor& executor) override {
+        Processor::Init(parentInfo, childIndex, executor);
         algo_.Init();
     }
 

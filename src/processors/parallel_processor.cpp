@@ -1,12 +1,19 @@
 #include "ads_psf/processors/parallel_processor.h"
+#include "ads_psf/async_executor.h"
 #include <future>
 #include <vector>
+#include <cassert>
 
 namespace ads_psf {
 
 ProcessStatus ParallelProcessor::Execute(ProcessContext& ctx) {
+    assert(executor_ != nullptr);
+
     std::vector<std::future<ProcessResult>> futures;
     for (auto& processor : processors_) {
+        // futures.emplace_back(executor_->Submit(processor->GetId(), [&ctx, proc = processor.get()]() {
+        //     return proc->Process(ctx);
+        // }));
         futures.emplace_back(std::async(std::launch::async, [&]() {
             return ProcessResult(processor->GetId(), processor->Process(ctx));
         }));

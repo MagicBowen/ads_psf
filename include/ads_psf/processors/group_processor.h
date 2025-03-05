@@ -13,7 +13,7 @@ struct GroupProcessor : Processor {
     void AddProcessor(std::unique_ptr<Processor>);
 
 private:
-    void Init(const ProcessorInfo&, uint32_t childIndex) override;
+    void Init(const ProcessorInfo&, uint32_t childIndex, AsyncExecutor& executor) override;
 
 protected:
     std::vector<std::unique_ptr<Processor>> processors_;

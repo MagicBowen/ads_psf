@@ -10,12 +10,13 @@
 
 namespace ads_psf {
 
-struct ProcessContext;
+enum class ProcessStatus;
+
+using AsyncResult = std::future<ProcessResult>;
+using AsyncTask = std::function<ProcessStatus()>;
 
 struct AsyncExecutor {
-    virtual std::future<ProcessResult> Submit(const ProcessorId&, 
-                                            std::function<ProcessStatus(ProcessContext&)> task, 
-                                            ProcessContext&) = 0;
+    virtual AsyncResult Submit(const ProcessorId&, AsyncTask) = 0;
     virtual ~AsyncExecutor() = default;
 };
 

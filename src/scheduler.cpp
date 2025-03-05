@@ -4,9 +4,12 @@
 
 namespace ads_psf {
 
-Scheduler::Scheduler(std::unique_ptr<Processor> rootProcessor)
-: rootProcessor_{std::move(rootProcessor)} {
-    rootProcessor_->Init(ProcessorInfo{"root", ProcessorId::Root()}, 0);
+Scheduler::Scheduler(std::unique_ptr<Processor> processor,
+                     std::unique_ptr<AsyncExecutor> executor)
+: rootProcessor_{std::move(processor)}
+, executor_{std::move(executor)} {
+
+    rootProcessor_->Init(ProcessorInfo{"root", ProcessorId::Root()}, 0, *executor_);
 }
 
 ProcessStatus Scheduler::Run(DataContext& dataCtx) {

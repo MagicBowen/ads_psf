@@ -14,15 +14,15 @@ struct DataGroupProcessor : GroupProcessor {
     : GroupProcessor(name), factory_(factory) {}
 
 private:
-    void Init(const ProcessorInfo& parentInfo, uint32_t childIndex) override {
+    void Init(const ProcessorInfo& parentInfo, uint32_t childIndex, AsyncExecutor& executor) override {
         if (!processors_.empty()) {
             return;
         }
-        Processor::Init(parentInfo, childIndex);
+        Processor::Init(parentInfo, childIndex, executor);
 
         for (uint32_t i = 0; i < N; ++i) {
             auto processor = factory_();
-            processor->Init(ProcessorInfo{name_, id_}, i + 1);
+            processor->Init(ProcessorInfo{name_, id_}, i + 1, executor);
             processors_.push_back(std::move(processor));
         }
     }

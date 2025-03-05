@@ -6,6 +6,7 @@
 
 namespace ads_psf {
 
+struct AsyncExecutor;
 struct ProcessContext;
 struct ProcessorInfo;
 enum class ProcessStatus;
@@ -16,8 +17,8 @@ struct Processor {
         
     virtual ~Processor() = default;
 
-    virtual void Init(const ProcessorInfo& parentInfo, uint32_t childIndex);
-    ProcessStatus Process(ProcessContext& ctx);
+    virtual void Init(const ProcessorInfo&, uint32_t childIndex, AsyncExecutor&);
+    ProcessStatus Process(ProcessContext&);
 
     const std::string& GetName() const {
         return name_;
@@ -33,6 +34,7 @@ private:
 protected:
     std::string name_;
     ProcessorId id_{0};
+    AsyncExecutor* executor_{nullptr};
 };
 
 } // namespace ads_psf

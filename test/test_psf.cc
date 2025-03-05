@@ -1,7 +1,19 @@
 #include "catch2/catch.hpp"
+
 #include "ads_psf/processor_dsl.h"
 #include "ads_psf/data_context.h"
 #include "ads_psf/data_parallel_id.h"
+
+#include "ads_psf/processors/sequential_processor.h"
+#include "ads_psf/processors/parallel_processor.h"
+#include "ads_psf/processors/race_processor.h"
+#include "ads_psf/processors/data_group_processor.h"
+#include "ads_psf/processors/data_parallel_processor.h"
+#include "ads_psf/processors/data_race_processor.h"
+#include "ads_psf/trackers/console_tracker.h"
+#include "ads_psf/trackers/timing_tracker.h"
+#include "ads_psf/executors/std_async_executor.h"
+
 #include <iostream>
 #include <random>
 #include <thread>
@@ -160,7 +172,8 @@ TEST_CASE("Processor Test") {
             PROCESS(MockAlgo1),
             PROCESS(MockAlgo2),
             PROCESS(MockAlgo3)
-        ), 
+        ),
+        EXECUTOR(StdAsyncExecutor),
         TRACK(ConsoleTracker), 
         TRACK(TimingTracker)
     );
@@ -191,6 +204,7 @@ TEST_CASE("Processor Ref Algo Test") {
             PROCESS_REF(algo2),
             PROCESS_REF(algo3)
         ),
+        EXECUTOR(StdAsyncExecutor),
         TRACK(ConsoleTracker), 
         TRACK(TimingTracker)
     );
@@ -233,6 +247,7 @@ TEST_CASE("Processor composite Test") {
 
     auto scheduler = SCHEDULE(
         processor, 
+        EXECUTOR(StdAsyncExecutor),
         TRACK(ConsoleTracker), 
         TRACK(TimingTracker)
     );
@@ -260,6 +275,7 @@ TEST_CASE("Processor composite Test") {
 TEST_CASE("DataParallelProcessor basic Test") {    
     auto scheduler = SCHEDULE(
         DATA_PARALLEL(MyDatas, 5, PROCESS(DataReadAlgo)),
+        EXECUTOR(StdAsyncExecutor),
         TRACK(TimingTracker)
     );
     
@@ -294,6 +310,7 @@ TEST_CASE("DataParallelProcessor complex Test") {
             ),
             PROCESS(MockAlgo3)
         ),
+        EXECUTOR(StdAsyncExecutor),
         TRACK(TimingTracker)
     );
     
@@ -330,6 +347,7 @@ TEST_CASE("DataRaceProcessor basic Test") {
                 PROCESS(DataReadAlgo)
             )
         ),
+        EXECUTOR(StdAsyncExecutor),
         TRACK(TimingTracker)
     );
     
@@ -368,6 +386,7 @@ TEST_CASE("DataRaceProcessor complex Test") {
             ),
             PROCESS(MockAlgo3)
         ),
+        EXECUTOR(StdAsyncExecutor),
         TRACK(TimingTracker)
     );
 
