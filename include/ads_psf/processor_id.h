@@ -13,24 +13,23 @@ struct ProcessorId {
     static ProcessorId CreateChild(const ProcessorId& parent, uint32_t childIndex);
     static ProcessorId Root();
     
+    bool IsValid() const;
+    uint64_t GetValue() const;
+    std::string ToString() const;
+
     ProcessorId GetParent() const;
     uint32_t GetDepth() const;
-    uint64_t GetValue() const;
     uint8_t GetLevelValue(uint32_t level) const;
-    std::string ToString() const;
     
     bool operator==(const ProcessorId& other) const;
     bool operator!=(const ProcessorId& other) const;
-
+    
     struct Hash {
         size_t operator()(const ProcessorId& id) const {
             return std::hash<uint64_t>{}(id.GetValue());
         }
     };
-    
-private:
-    static uint32_t GetDepthFromValue(uint64_t value);
-    
+
 private:
     uint64_t value_;
 };
