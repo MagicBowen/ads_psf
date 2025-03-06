@@ -2,7 +2,7 @@
 #include <sstream>
 
 namespace {
-    static constexpr uint32_t MAX_DEPTH = 9;       // 现在可以支持9层嵌套(0-8)
+    static constexpr uint32_t MAX_DEPTH = 9;       // 支持8层嵌套(root : 0, others: 1-8)
     static constexpr uint32_t BITS_PER_LEVEL = 8;  // 每层使用8位，每层最多支持255个处理器
     static constexpr uint64_t LEVEL_MASK = 0xFF;   // 每层的掩码
     static constexpr uint64_t DEPTH_SHIFT = 56;    // 层数的偏移量

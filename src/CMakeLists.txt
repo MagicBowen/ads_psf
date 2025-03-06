@@ -9,15 +9,15 @@ set(CMAKE_CXX_STANDARD 17)
 
 # ---- Collect all src files except main.c ----
 
-# file(GLOB_RECURSE MAIN_FILE 
-#     "main.cc" "main.cpp"
-# )
+file(GLOB_RECURSE MAIN_FILE 
+    "main.cc" "main.cpp"
+)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "*.c" "*.C" "*.cc" "*.CC" "*.cpp" "*.CPP" "*.c++"
 )
 
-# list(REMOVE_ITEM SOURCES ${MAIN_FILE})
+list(REMOVE_ITEM SOURCES ${MAIN_FILE})
 
 # ---- Define library target ----
 
@@ -42,7 +42,7 @@ set_target_properties(${TARGET_LIB} PROPERTIES CXX_STANDARD 17)
 # ---- Add executable target ----
 
 if (EXECUTABLE)
-    # set(EXEC_TARGET ${TARGET_LIB}_service)
-    # add_executable(${EXEC_TARGET} ${MAIN_FILE})
-    # target_link_libraries(${EXEC_TARGET} PRIVATE ${TARGET_LIB})
+    set(EXEC_TARGET ${TARGET_LIB}_service)
+    add_executable(${EXEC_TARGET} ${MAIN_FILE})
+    target_link_libraries(${EXEC_TARGET} PRIVATE ${TARGET_LIB})
 endif()

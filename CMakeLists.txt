@@ -18,7 +18,7 @@ endif()
 # ---- Options for project ----
 
 option(SHARED      "Generate shared library otherwise static" OFF)
-option(EXECUTABLE  "Generate executable target" OFF)
+option(EXECUTABLE  "Generate executable target" ON)
 option(ENABLE_TEST "Build tests" OFF)
 option(ENABLE_TEST_COVERAGE "Enable test coverage" OFF)
 option(ENABLE_ASON "Enable AddressSanitizer" OFF)
