@@ -73,7 +73,7 @@ uint8_t ProcessorId::GetLevelValue(uint32_t level) const {
 
 std::string ProcessorId::ToString() const {
     uint32_t depth = GetDepth();
-    if (depth == 0) return "$";
+    if (depth == 0) return "root";
     
     std::ostringstream oss;
     oss << "$";
@@ -96,3 +96,8 @@ bool ProcessorId::IsValid() const {
 }
 
 } // namespace ads_psf
+
+std::ostream& operator<<(std::ostream& os, ads_psf::ProcessorId id) {
+    os << id.ToString();
+    return os;
+}

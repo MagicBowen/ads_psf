@@ -9,7 +9,7 @@ Scheduler::Scheduler(std::unique_ptr<Processor> processor,
 : rootProcessor_{std::move(processor)}
 , executor_{std::move(executor)} {
 
-    rootProcessor_->Init(ProcessorInfo{"root", ProcessorId::Root()}, 0, *executor_);
+    rootProcessor_->Init(ProcessorInfo{".", ProcessorId::Root()}, 0, *executor_);
 }
 
 ProcessStatus Scheduler::Run(DataContext& dataCtx) {

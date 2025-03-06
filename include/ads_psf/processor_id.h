@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <ostream>
 
 namespace ads_psf {
 
@@ -35,5 +36,7 @@ private:
 };
 
 } // namespace ads_psf
+
+std::ostream& operator<<(std::ostream&, ads_psf::ProcessorId);
 
 #endif // ADS_PSF_PROCESSOR_ID_H
