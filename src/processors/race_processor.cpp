@@ -1,8 +1,6 @@
 #include "ads_psf/processors/race_processor.h"
 #include "ads_psf/process_context.h"
 #include "ads_psf/async_executor.h"
-#include <future>
-#include <vector>
 #include <cassert>
 
 namespace ads_psf {
@@ -17,18 +15,17 @@ ProcessStatus RaceProcessor::Execute(ProcessContext& ctx) {
     auto innerCtx = ProcessContext::CreateSubContext(ctx);
 
     for (auto& processor : processors_) {
-        // futures.emplace_back(executor_->Submit(processor->GetId(), [&innerCtx, &finalPromise, proc = processor.get()]() {
-        //     ProcessStatus status = proc->Process(innerCtx);
-        futures.emplace_back(std::async(std::launch::async, [&]() {
-            ProcessStatus status = processor->Process(innerCtx);
-            if (status == ProcessStatus::OK) {
-                if (innerCtx.TryStop()) {
-                    finalPromise.set_value(status);
+        futures.emplace_back(
+            executor_->Submit(processor->GetId(), [&innerCtx, &finalPromise, proc = processor.get()]() {
+                ProcessStatus status = proc->Process(innerCtx);
+                if (status == ProcessStatus::OK) {
+                    if (innerCtx.TryStop()) {
+                        finalPromise.set_value(status);
+                    }
                 }
-            }
-            // return status;
-            return ProcessResult(processor->GetId(), status);
-        }));
+                return status;
+            })
+        );
     }
 
     ProcessStatus overall = finalFuture.get();

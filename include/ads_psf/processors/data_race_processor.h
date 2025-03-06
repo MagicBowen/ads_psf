@@ -3,10 +3,9 @@
 
 #include "ads_psf/processors/data_group_processor.h"
 #include "ads_psf/data_parallel_id.h"
-#include "ads_psf/process_result.h"
+#include "ads_psf/process_context.h"
 #include "ads_psf/async_executor.h"
-#include <future>
-#include <vector>
+#include <cassert>
 
 namespace ads_psf {
 
@@ -28,19 +27,20 @@ private:
         auto innerCtx = ProcessContext::CreateSubContext(ctx);
 
         for (int i = 0; i < processors_.size(); i++) {
-            // futures.emplace_back(executor_->Submit(processors_[i]->GetId(), [&]() {
-                futures.emplace_back(std::async(std::launch::async, [&, i, processor = processors_[i].get()]() {
-                data_parallel::AutoSwitchId<DTYPE> switcher(i);
-                // ProcessStatus status = processors_[i]->Process(innerCtx);
-                ProcessStatus status = processor->Process(innerCtx);
-                if (status == ProcessStatus::OK) {
-                    if (innerCtx.TryStop()) {
-                        finalPromise.set_value(status);
+            futures.emplace_back(
+                executor_->Submit(processors_[i]->GetId(), 
+                    [&innerCtx, &finalPromise, i, proc = processors_[i].get()]() 
+                {
+                    data_parallel::AutoSwitchId<DTYPE> switcher(i);
+                    ProcessStatus status = proc->Process(innerCtx);
+                    if (status == ProcessStatus::OK) {
+                        if (innerCtx.TryStop()) {
+                            finalPromise.set_value(status);
+                        }
                     }
-                }
-                // return status;
-                return ProcessResult(processor->GetId(), status);
-            }));
+                    return status;
+                })
+            );
         }
 
         ProcessStatus overall = finalFuture.get();

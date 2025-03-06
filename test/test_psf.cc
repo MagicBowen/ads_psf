@@ -379,6 +379,7 @@ TEST_CASE("DataRaceProcessor complex Test") {
             PROCESS(MockAlgo3)
         ),
         EXECUTOR(StdAsyncExecutor),
+        TRACKER(ConsoleTracker),
         TRACKER(TimingTracker)
     );
 

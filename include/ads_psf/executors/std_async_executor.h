@@ -12,7 +12,7 @@ namespace ads_psf {
 struct StdAsyncExecutor : AsyncExecutor {
 private:
     AsyncResult Submit(const ProcessorId& id, AsyncTask task) override {
-        return std::async(std::launch::async, [&]() {
+        return std::async(std::launch::async, [&id, task = std::move(task)]() {
             return ProcessResult{id, task()};
         });
     }
