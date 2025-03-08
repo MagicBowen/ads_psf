@@ -4,6 +4,7 @@
 #include "ads_psf/processors/group_processor.h"
 #include "ads_psf/processor_factory.h"
 #include "ads_psf/processor_info.h"
+#include "ads_psf/async_executor.h"
 #include <functional>
 
 namespace ads_psf {
@@ -24,6 +25,7 @@ private:
             auto processor = factory_();
             processor->Init(ProcessorInfo{name_, id_}, i + 1, executor);
             processors_.push_back(std::move(processor));
+            executor_->CreateDedicatedThread(processors_.back()->GetId());
         }
     }
 

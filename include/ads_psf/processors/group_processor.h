@@ -12,8 +12,8 @@ struct GroupProcessor : Processor {
 
     void AddProcessor(std::unique_ptr<Processor>);
 
-private:
-    void Init(const ProcessorInfo&, uint32_t childIndex, AsyncExecutor& executor) override;
+protected:
+    void Init(const ProcessorInfo&, uint32_t childIndex, AsyncExecutor&) override;
 
 protected:
     std::vector<std::unique_ptr<Processor>> processors_;

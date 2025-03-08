@@ -6,21 +6,27 @@ void GroupTracker::AddTracker(std::unique_ptr<ProcessTracker> tracker) {
     trackers_.emplace_back(std::move(tracker));
 }
 
-void GroupTracker::Dump() const {
+void GroupTracker::ScheduleEnter() {
     for (auto& tracker : trackers_) {
-        tracker->Dump();
+        tracker->ScheduleEnter();
+    }    
+}
+
+void GroupTracker::ScheduleExit(ProcessStatus status) {
+    for (auto& tracker : trackers_) {
+        tracker->ScheduleExit(status);
+    }        
+}
+
+void GroupTracker::ProcessEnter(const ProcessorInfo& info) {
+    for (auto& tracker : trackers_) {
+        tracker->ProcessEnter(info);
     }
 }
 
-void GroupTracker::TrackEnter(const ProcessorInfo& info) {
+void GroupTracker::ProcessExit(const ProcessorInfo& info, ProcessStatus status) {
     for (auto& tracker : trackers_) {
-        tracker->TrackEnter(info);
-    }
-}
-
-void GroupTracker::TrackExit(const ProcessorInfo& info, ProcessStatus status) {
-    for (auto& tracker : trackers_) {
-        tracker->TrackExit(info, status);
+        tracker->ProcessExit(info, status);
     }
 }
 

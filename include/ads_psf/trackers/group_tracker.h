@@ -9,11 +9,11 @@ namespace ads_psf {
 
 struct GroupTracker : ProcessTracker {
     void AddTracker(std::unique_ptr<ProcessTracker>);
-    void Dump() const override;
-
-private:
-    void TrackEnter(const ProcessorInfo&) override;
-    void TrackExit(const ProcessorInfo&, ProcessStatus) override;
+    
+    void ScheduleEnter() override;
+    void ScheduleExit(ProcessStatus) override;
+    void ProcessEnter(const ProcessorInfo&) override;
+    void ProcessExit(const ProcessorInfo&, ProcessStatus) override;
 
 private:
     std::vector<std::unique_ptr<ProcessTracker>> trackers_;

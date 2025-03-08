@@ -12,11 +12,14 @@ namespace ads_psf {
 struct ProcessorInfo;
 
 struct TimingTracker : ProcessTracker {
-    void TrackEnter(const ProcessorInfo&) override;
-    void TrackExit(const ProcessorInfo&, ProcessStatus) override;
-    void Dump() const override;
-
 private:
+    void ScheduleEnter() override;
+    void ScheduleExit(ProcessStatus) override;
+    void ProcessEnter(const ProcessorInfo&) override;
+    void ProcessExit(const ProcessorInfo&, ProcessStatus) override;
+    
+private:
+    void Dump() const;
     void DumpProcessor(const ProcessorId&, int level) const;
 
 private:

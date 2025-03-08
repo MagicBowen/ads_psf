@@ -5,15 +5,22 @@
 
 namespace ads_psf {
 
-void ConsoleTracker::TrackEnter(const ProcessorInfo& info) {
+void ConsoleTracker::ScheduleEnter() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (info.id == ProcessorId::Root()) {
-        std::cout << "\n============== Schedule Start =============\n";
-    } 
+    std::cout << "\n============== Schedule Start =============\n";
+}
+
+void ConsoleTracker::ScheduleExit(ProcessStatus status) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::cout << "============== Schedule End with status: " << status << " =============\n";
+}
+
+void ConsoleTracker::ProcessEnter(const ProcessorInfo& info) {
+    std::lock_guard<std::mutex> lock(mutex_);
     std::cout << info << " enter..." << "\n";
 }
 
-void ConsoleTracker::TrackExit(const ProcessorInfo& info, ProcessStatus status) {
+void ConsoleTracker::ProcessExit(const ProcessorInfo& info, ProcessStatus status) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::cout << info << " exit with status: " << status << "!" << "\n";
 }

@@ -16,7 +16,6 @@ struct Scheduler {
 
     ProcessStatus Run(DataContext&);
     void AddTracker(std::unique_ptr<ProcessTracker>);
-    void Dump() const;
 
 private:
     std::unique_ptr<Processor> rootProcessor_;

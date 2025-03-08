@@ -12,7 +12,7 @@ struct ProcessorInfo;
 enum class ProcessStatus;
 
 struct Processor {
-    Processor(const std::string& name)
+    explicit Processor(const std::string& name)
     : name_(name) {}
         
     virtual ~Processor() = default;

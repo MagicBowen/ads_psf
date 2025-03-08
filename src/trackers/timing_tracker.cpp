@@ -6,13 +6,23 @@
 
 namespace ads_psf {
 
-void TimingTracker::TrackEnter(const ProcessorInfo& info) {
+void TimingTracker::ScheduleEnter() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    timingData_.clear();
+}
+
+void TimingTracker::ScheduleExit(ProcessStatus status) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Dump();
+}
+
+void TimingTracker::ProcessEnter(const ProcessorInfo& info) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto now = std::chrono::high_resolution_clock::now();
     timingData_[info.id] = std::make_pair(now, std::chrono::nanoseconds(0));
 }
 
-void TimingTracker::TrackExit(const ProcessorInfo& info, ProcessStatus status) {
+void TimingTracker::ProcessExit(const ProcessorInfo& info, ProcessStatus status) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto now = std::chrono::high_resolution_clock::now();
     auto it = timingData_.find(info.id);
@@ -23,7 +33,6 @@ void TimingTracker::TrackExit(const ProcessorInfo& info, ProcessStatus status) {
 }
 
 void TimingTracker::Dump() const {
-    std::lock_guard<std::mutex> lock(mutex_);
     std::cout << "\n======= Processor Timing Statistics =======\n";
     
     ProcessorId rootId = ProcessorId::Root();

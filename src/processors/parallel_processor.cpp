@@ -1,26 +1,33 @@
 #include "ads_psf/processors/parallel_processor.h"
 #include "ads_psf/async_executor.h"
-#include <cassert>
 
 namespace ads_psf {
 
-ProcessStatus ParallelProcessor::Execute(ProcessContext& ctx) {
-    assert(executor_ != nullptr);
+void ParallelProcessor::Init(const ProcessorInfo& info, uint32_t childIndex, AsyncExecutor& executor) {
+    GroupProcessor::Init(info, childIndex, executor);
 
-    std::vector<std::future<ProcessResult>> futures;
+    for (uint32_t i = 0; i < processors_.size(); ++i) {
+        executor_->CreateDedicatedThread(processors_[i]->GetId());
+    }
+}
+
+ProcessStatus ParallelProcessor::Execute(ProcessContext& ctx) {
+    ProcessTaskIds taskIds;
+
     for (auto& processor : processors_) {
-        futures.emplace_back(
-            executor_->Submit(processor->GetId(), [&ctx, proc = processor.get()]() {
-                return proc->Process(ctx);
-            })
-        );
+        bool ret = executor_->Submit(processor->GetId(), [&ctx, proc = processor.get()]() {
+            return proc->Process(ctx);
+        });
+        if (ret) {
+            taskIds.push_back(processor->GetId());
+        }
     }
 
     ProcessStatus overall = ProcessStatus::OK;
-    for (auto& fut : futures) {
-        auto ret = fut.get();
-        if (ret.status != ProcessStatus::OK) {
-            overall = ret.status;
+    auto results = executor_->WaitForAll(taskIds);
+    for (const auto& result : results) {
+        if (result.status != ProcessStatus::OK) {
+            overall = result.status;
         }
     }
     return overall;

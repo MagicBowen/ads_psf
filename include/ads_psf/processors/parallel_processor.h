@@ -10,6 +10,7 @@ struct ParallelProcessor : GroupProcessor {
     using GroupProcessor::GroupProcessor;
 
 private:
+    void Init(const ProcessorInfo&, uint32_t childIndex, AsyncExecutor&) override;
     ProcessStatus Execute(ProcessContext&) override;
 };
 

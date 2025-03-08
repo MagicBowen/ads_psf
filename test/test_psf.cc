@@ -174,8 +174,6 @@ TEST_CASE("Processor Test") {
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
 
-    scheduler->Dump();
-
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() == 3);
     REQUIRE(checker->IsAlgoAt("MockAlgo1", 0));
@@ -206,8 +204,6 @@ TEST_CASE("Processor Ref Algo Test") {
 
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
-
-    scheduler->Dump();
 
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() == 3);
@@ -250,8 +246,6 @@ TEST_CASE("Processor composite Test") {
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
 
-    scheduler->Dump();
-
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() == 7);
     REQUIRE(checker->IsAlgoAt("MockAlgo1", 0));
@@ -277,8 +271,6 @@ TEST_CASE("DataParallelProcessor basic Test") {
 
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
-
-    scheduler->Dump();
 
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() == 5);
@@ -312,8 +304,6 @@ TEST_CASE("DataParallelProcessor complex Test") {
 
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
-
-    scheduler->Dump();
 
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() == 11);
@@ -349,8 +339,6 @@ TEST_CASE("DataRaceProcessor basic Test") {
 
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
-
-    scheduler->Dump();
 
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() > 5);
@@ -389,8 +377,6 @@ TEST_CASE("DataRaceProcessor complex Test") {
 
     auto status = scheduler->Run(dataCtx);
     REQUIRE(status == ProcessStatus::OK);
-
-    scheduler->Dump();
 
     auto checker = dataCtx.Fetch<AlgoChecker>();
     REQUIRE(checker->Size() > 6);

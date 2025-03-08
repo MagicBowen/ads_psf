@@ -15,7 +15,7 @@ struct ProcessContext {
         return ProcessContext(parentCtx.GetDataContext(), &parentCtx.stopFlag_, parentCtx.tracker_);
     }
     
-    ProcessContext(DataContext& dataCtx)
+    explicit ProcessContext(DataContext& dataCtx)
     : dataCtx_(dataCtx) {}
 
     DataContext& GetDataContext() {
@@ -48,13 +48,13 @@ struct ProcessContext {
     
     void EnterProcess(const ProcessorInfo& info) {
         if (tracker_) {
-            tracker_->TrackEnter(info);
+            tracker_->ProcessEnter(info);
         }
     }
     
     void ExitProcess(const ProcessorInfo& info, ProcessStatus status) {
         if (tracker_) {
-            tracker_->TrackExit(info, status);
+            tracker_->ProcessExit(info, status);
         }
     }
 private:

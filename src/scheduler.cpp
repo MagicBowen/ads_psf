@@ -13,17 +13,16 @@ Scheduler::Scheduler(std::unique_ptr<Processor> processor,
 }
 
 ProcessStatus Scheduler::Run(DataContext& dataCtx) {
+    tracker_.ScheduleEnter();
     ProcessContext processCtx{dataCtx};
     processCtx.SetTracker(&tracker_);
-    return rootProcessor_->Process(processCtx);
+    ProcessStatus status = rootProcessor_->Process(processCtx);
+    tracker_.ScheduleExit(status);
+    return status;
 }
 
 void Scheduler::AddTracker(std::unique_ptr<ProcessTracker> tracker) {
     tracker_.AddTracker(std::move(tracker));
-}
-
-void Scheduler::Dump() const {
-    tracker_.Dump();
 }
 
 } // namespace ads_psf
