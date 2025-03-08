@@ -1,34 +1,29 @@
-#include <atomic>
+#include  "ads_psf/data_context.h"
+#include  "ads_psf/process_context.h"
+#include  "ads_psf/process_status.h"
+
 #include <condition_variable>
+#include <atomic>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <queue>
+#include <list>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 #include <chrono>
-#include <optional>
 #include <algorithm>
+
+using namespace ads_psf;
 
 // 任务ID类型
 using TaskId = uint64_t;
 
-// 处理状态枚举
-enum class ProcessStatus {
-    OK,
-    ERROR,
-    PENDING
-};
-
-// 前向声明ProcessContext类
-class ProcessContext;
-
-// 消息结构
-struct Message {
+// 请求结构
+struct ProcessReq {
     TaskId taskId;
     std::string taskName;
     std::function<ProcessStatus(ProcessContext&)> taskFunction;
@@ -36,14 +31,14 @@ struct Message {
 };
 
 // 响应结构
-struct Response {
+struct ProcessRsp {
     TaskId taskId;
     std::string taskName;
     ProcessStatus status;
 };
 
 //=============================================================================
-// 通用线程安全队列实现 - 不再区分SPSC/SPMC/MPSC
+// 改进的线程安全队列实现 - 使用std::list
 //=============================================================================
 
 template<typename T>
@@ -51,41 +46,109 @@ class ThreadSafeQueue {
 public:
     void Push(T item) {
         std::lock_guard<std::mutex> lock(mutex_);
-        queue_.push(std::move(item));
-        condition_.notify_one();
+        queue_.push_back(std::move(item));
+        condition_.notify_all(); // 通知所有等待中的Take和Pop操作
     }
 
-    bool Pop(T& item, std::optional<std::chrono::milliseconds> timeout = std::nullopt) {
+    // 无超时的Pop操作
+    bool Pop(T& item) {
         std::unique_lock<std::mutex> lock(mutex_);
+        condition_.wait(lock, [this] { return !queue_.empty() || shutdown_; });
         
-        if (timeout) {
-            // 有超时的等待
-            bool hasItem = condition_.wait_for(lock, *timeout, 
-                [this] { return !queue_.empty() || shutdown_; });
-            
-            if (!hasItem || (shutdown_ && queue_.empty()))
-                return false;
-        } else {
-            // 无限期等待
-            condition_.wait(lock, [this] { return !queue_.empty() || shutdown_; });
-            
-            if (shutdown_ && queue_.empty())
-                return false;
-        }
+        if (shutdown_ && queue_.empty())
+            return false;
             
         item = std::move(queue_.front());
-        queue_.pop();
+        queue_.pop_front();
         return true;
     }
 
+    // 带超时的Pop操作
+    bool Pop(T& item, const std::chrono::milliseconds& timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        bool hasItem = condition_.wait_for(lock, timeout, 
+            [this] { return !queue_.empty() || shutdown_; });
+        
+        if (!hasItem || (shutdown_ && queue_.empty()))
+            return false;
+            
+        item = std::move(queue_.front());
+        queue_.pop_front();
+        return true;
+    }
+
+    // 尝试不阻塞地Pop
     bool TryPop(T& item) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (queue_.empty())
             return false;
             
         item = std::move(queue_.front());
-        queue_.pop();
+        queue_.pop_front();
         return true;
+    }
+
+    // 无超时的Take操作（根据谓词筛选）
+    template<typename Predicate>
+    bool Take(Predicate pred, T& item) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        
+        // 持续等待直到找到满足条件的元素或队列关闭
+        while (true) {
+            // 在当前队列中查找
+            auto it = std::find_if(queue_.begin(), queue_.end(), pred);
+            
+            // 如果找到了匹配的元素
+            if (it != queue_.end()) {
+                item = std::move(*it);
+                queue_.erase(it);
+                return true;
+            }
+            
+            // 如果没有找到并且队列已关闭
+            if (shutdown_) {
+                return false;
+            }
+            
+            // 等待新元素
+            condition_.wait(lock);
+        }
+    }
+
+    // 带超时的Take操作
+    template<typename Predicate>
+    bool Take(Predicate pred, T& item, const std::chrono::milliseconds& timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        auto endTime = std::chrono::steady_clock::now() + timeout;
+        
+        // 持续尝试查找直到超时
+        while (std::chrono::steady_clock::now() < endTime) {
+            // 在当前队列中查找
+            auto it = std::find_if(queue_.begin(), queue_.end(), pred);
+            
+            // 如果找到了匹配的元素
+            if (it != queue_.end()) {
+                item = std::move(*it);
+                queue_.erase(it);
+                return true;
+            }
+            
+            // 如果没有找到并且队列已关闭
+            if (shutdown_) {
+                return false;
+            }
+            
+            // 计算剩余等待时间
+            auto remainingTime = endTime - std::chrono::steady_clock::now();
+            if (remainingTime <= std::chrono::milliseconds::zero()) {
+                return false; // 超时
+            }
+            
+            // 等待新元素，但最多等待剩余时间
+            condition_.wait_for(lock, remainingTime);
+        }
+        
+        return false; // 超时
     }
 
     void Shutdown() {
@@ -100,223 +163,10 @@ public:
     }
 
 private:
-    std::queue<T> queue_;
+    std::list<T> queue_; // 使用list来支持高效的中间元素删除
     mutable std::mutex mutex_;
     std::condition_variable condition_;
     bool shutdown_{false};
-};
-
-//=============================================================================
-// 响应等待器 - 处理阻塞等待接口
-//=============================================================================
-
-class ResponseWaiter {
-public:
-    ResponseWaiter(ThreadSafeQueue<Response*>& responseQueue)
-        : responseQueue_(responseQueue) {}
-    
-    // 等待特定任务ID的响应（无限期等待）
-    Response* WaitForTask(TaskId taskId) {
-        return WaitForTaskWithTimeout(taskId, std::nullopt);
-    }
-    
-    // 等待特定任务ID的响应（支持超时）
-    Response* WaitForTaskWithTimeout(TaskId taskId, 
-                                    std::optional<std::chrono::milliseconds> timeout) {
-        // 首先检查已收集的响应
-        {
-            std::lock_guard<std::mutex> lock(collectedMutex_);
-            auto it = std::find_if(collectedResponses_.begin(), collectedResponses_.end(),
-                [taskId](Response* resp) { return resp->taskId == taskId; });
-            
-            if (it != collectedResponses_.end()) {
-                Response* result = *it;
-                collectedResponses_.erase(it);
-                return result;
-            }
-        }
-        
-        // 决定等待时间
-        auto startTime = std::chrono::steady_clock::now();
-        auto remainingTime = timeout;
-        
-        // 持续尝试获取响应
-        while (true) {
-            Response* response = nullptr;
-            bool success = responseQueue_.Pop(response, remainingTime);
-            
-            if (!success) {
-                // 超时或队列关闭
-                return nullptr;
-            }
-            
-            if (response->taskId == taskId) {
-                return response;
-            } else {
-                // 不是我们要等的任务，保存起来
-                std::lock_guard<std::mutex> lock(collectedMutex_);
-                collectedResponses_.push_back(response);
-            }
-            
-            // 更新剩余时间
-            if (timeout) {
-                auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - startTime);
-                
-                if (elapsedTime >= *timeout) {
-                    return nullptr; // 超时
-                }
-                
-                remainingTime = std::chrono::milliseconds(*timeout - elapsedTime);
-            }
-        }
-    }
-    
-    // 等待一组任务的所有响应
-    std::vector<Response*> WaitForAllTasks(const std::vector<TaskId>& taskIds, 
-                                          std::optional<std::chrono::milliseconds> timeout = std::nullopt) {
-        if (taskIds.empty()) {
-            return {};
-        }
-        
-        std::vector<Response*> results;
-        std::vector<TaskId> remainingIds(taskIds);
-        
-        // 首先检查已收集的响应
-        {
-            std::lock_guard<std::mutex> lock(collectedMutex_);
-            
-            auto it = collectedResponses_.begin();
-            while (it != collectedResponses_.end()) {
-                auto idIt = std::find(remainingIds.begin(), remainingIds.end(), (*it)->taskId);
-                if (idIt != remainingIds.end()) {
-                    results.push_back(*it);
-                    remainingIds.erase(idIt);
-                    it = collectedResponses_.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-        }
-        
-        // 如果已经收集到所有任务，直接返回
-        if (remainingIds.empty()) {
-            return results;
-        }
-        
-        // 决定等待时间
-        auto startTime = std::chrono::steady_clock::now();
-        auto remainingTime = timeout;
-        
-        // 等待剩余的任务响应
-        while (!remainingIds.empty()) {
-            Response* response = nullptr;
-            bool success = responseQueue_.Pop(response, remainingTime);
-            
-            if (!success) {
-                // 超时或队列关闭
-                break;
-            }
-            
-            auto idIt = std::find(remainingIds.begin(), remainingIds.end(), response->taskId);
-            if (idIt != remainingIds.end()) {
-                results.push_back(response);
-                remainingIds.erase(idIt);
-            } else {
-                // 不是我们要等的任务，保存起来
-                std::lock_guard<std::mutex> lock(collectedMutex_);
-                collectedResponses_.push_back(response);
-            }
-            
-            // 更新剩余时间
-            if (timeout) {
-                auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - startTime);
-                
-                if (elapsedTime >= *timeout) {
-                    break; // 超时
-                }
-                
-                remainingTime = std::chrono::milliseconds(*timeout - elapsedTime);
-            }
-        }
-        
-        return results;
-    }
-    
-    // 等待一组任务中的任意一个响应
-    Response* WaitForAnyTask(const std::vector<TaskId>& taskIds,
-                           std::optional<std::chrono::milliseconds> timeout = std::nullopt) {
-        if (taskIds.empty()) {
-            return nullptr;
-        }
-        
-        // 首先检查已收集的响应
-        {
-            std::lock_guard<std::mutex> lock(collectedMutex_);
-            
-            for (TaskId id : taskIds) {
-                auto it = std::find_if(collectedResponses_.begin(), collectedResponses_.end(),
-                    [id](Response* resp) { return resp->taskId == id; });
-                
-                if (it != collectedResponses_.end()) {
-                    Response* result = *it;
-                    collectedResponses_.erase(it);
-                    return result;
-                }
-            }
-        }
-        
-        // 决定等待时间
-        auto startTime = std::chrono::steady_clock::now();
-        auto remainingTime = timeout;
-        
-        // 等待任意一个匹配的响应
-        while (true) {
-            Response* response = nullptr;
-            bool success = responseQueue_.Pop(response, remainingTime);
-            
-            if (!success) {
-                // 超时或队列关闭
-                return nullptr;
-            }
-            
-            auto idIt = std::find(taskIds.begin(), taskIds.end(), response->taskId);
-            if (idIt != taskIds.end()) {
-                return response;
-            } else {
-                // 不是我们要等的任务，保存起来
-                std::lock_guard<std::mutex> lock(collectedMutex_);
-                collectedResponses_.push_back(response);
-            }
-            
-            // 更新剩余时间
-            if (timeout) {
-                auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - startTime);
-                
-                if (elapsedTime >= *timeout) {
-                    return nullptr; // 超时
-                }
-                
-                remainingTime = std::chrono::milliseconds(*timeout - elapsedTime);
-            }
-        }
-    }
-    
-    // 清理收集的响应
-    void Cleanup() {
-        std::lock_guard<std::mutex> lock(collectedMutex_);
-        for (auto* resp : collectedResponses_) {
-            delete resp;
-        }
-        collectedResponses_.clear();
-    }
-
-private:
-    ThreadSafeQueue<Response*>& responseQueue_;
-    std::vector<Response*> collectedResponses_;
-    std::mutex collectedMutex_;
 };
 
 //=============================================================================
@@ -332,10 +182,10 @@ public:
     }
     
     // 初始化线程池
-    void Initialize(uint32_t threadCount, std::function<void(Message*)> messageCallback) {
+    void Initialize(uint32_t threadCount, std::function<void(ProcessReq*)> requestCallback) {
         if (initialized_) return;
         
-        messageCallback_ = std::move(messageCallback);
+        requestCallback_ = std::move(requestCallback);
         
         // 创建工作线程
         for (uint32_t i = 0; i < threadCount; ++i) {
@@ -349,7 +199,7 @@ public:
     
     // 添加具名线程
     void CreateNamedThread(const std::string& name, uint32_t index, 
-                           std::function<void(Message*)> messageCallback) {
+                           std::function<void(ProcessReq*)> requestCallback) {
         std::string threadKey = BuildThreadKey(name, index);
         
         std::lock_guard<std::mutex> lock(namedThreadsMutex_);
@@ -358,11 +208,11 @@ public:
         }
         
         // 创建工作队列
-        auto inQueue = std::make_shared<ThreadSafeQueue<Message*>>();
+        auto inQueue = std::make_shared<ThreadSafeQueue<ProcessReq*>>();
         
         // 创建并启动线程
-        std::thread worker([this, inQueue, messageCallback] {
-            NamedWorkerThread(inQueue, messageCallback);
+        std::thread worker([this, inQueue, requestCallback] {
+            NamedWorkerThread(inQueue, requestCallback);
         });
         
         // 保存线程信息
@@ -374,38 +224,136 @@ public:
     }
     
     // 向共享队列提交任务
-    void SubmitToSharedQueue(Message* message) {
-        sharedTaskQueue_.Push(message);
+    void SubmitToSharedQueue(ProcessReq* request) {
+        sharedTaskQueue_.Push(request);
     }
     
     // 向命名线程提交任务
-    void SubmitToNamedThread(const std::string& name, uint32_t index, Message* message) {
+    void SubmitToNamedThread(const std::string& name, uint32_t index, ProcessReq* request) {
         std::string threadKey = BuildThreadKey(name, index);
         
         std::lock_guard<std::mutex> lock(namedThreadsMutex_);
         auto it = namedThreads_.find(threadKey);
         if (it == namedThreads_.end()) {
             // 线程不存在，作为错误处理
-            Response* resp = new Response();
-            resp->taskId = message->taskId;
-            resp->taskName = message->taskName;
+            ProcessRsp* resp = new ProcessRsp();
+            resp->taskId = request->taskId;
+            resp->taskName = request->taskName;
             resp->status = ProcessStatus::ERROR;
             responseQueue_.Push(resp);
-            delete message;
+            delete request;
             return;
         }
         
-        it->second.inQueue->Push(message);
+        it->second.inQueue->Push(request);
     }
     
     // 将响应放入响应队列
-    void QueueResponse(Response* response) {
+    void QueueResponse(ProcessRsp* response) {
         responseQueue_.Push(response);
     }
     
-    // 获取响应等待器
-    ResponseWaiter& GetResponseWaiter() {
-        return *responseWaiter_;
+    // 等待特定任务ID的响应（无超时）
+    ProcessRsp* WaitForResponse(TaskId taskId) {
+        ProcessRsp* resp = nullptr;
+        bool success = responseQueue_.Take(
+            [taskId](const ProcessRsp* r) { return r->taskId == taskId; }, 
+            resp);
+            
+        return success ? resp : nullptr;
+    }
+    
+    // 等待特定任务ID的响应（带超时）
+    ProcessRsp* WaitForResponse(TaskId taskId, const std::chrono::milliseconds& timeout) {
+        ProcessRsp* resp = nullptr;
+        bool success = responseQueue_.Take(
+            [taskId](const ProcessRsp* r) { return r->taskId == taskId; }, 
+            resp, timeout);
+            
+        return success ? resp : nullptr;
+    }
+    
+    // 等待一组任务中任意一个的响应（无超时）
+    ProcessRsp* WaitForAnyResponse(const std::vector<TaskId>& taskIds) {
+        ProcessRsp* resp = nullptr;
+        bool success = responseQueue_.Take(
+            [&taskIds](const ProcessRsp* r) { 
+                return std::find(taskIds.begin(), taskIds.end(), r->taskId) != taskIds.end(); 
+            }, 
+            resp);
+            
+        return success ? resp : nullptr;
+    }
+    
+    // 等待一组任务中任意一个的响应（带超时）
+    ProcessRsp* WaitForAnyResponse(const std::vector<TaskId>& taskIds, 
+                               const std::chrono::milliseconds& timeout) {
+        ProcessRsp* resp = nullptr;
+        bool success = responseQueue_.Take(
+            [&taskIds](const ProcessRsp* r) { 
+                return std::find(taskIds.begin(), taskIds.end(), r->taskId) != taskIds.end(); 
+            }, 
+            resp, timeout);
+            
+        return success ? resp : nullptr;
+    }
+    
+    // 等待一组任务全部完成（无超时）
+    std::vector<ProcessRsp*> WaitForAllResponses(const std::vector<TaskId>& taskIds) {
+        std::vector<ProcessRsp*> results;
+        std::vector<TaskId> remainingIds(taskIds);
+        
+        while (!remainingIds.empty()) {
+            ProcessRsp* resp = nullptr;
+            bool success = responseQueue_.Take(
+                [&remainingIds](const ProcessRsp* r) { 
+                    return std::find(remainingIds.begin(), remainingIds.end(), r->taskId) != remainingIds.end(); 
+                }, 
+                resp);
+                
+            if (!success) {
+                break; // 队列关闭或其他错误
+            }
+            
+            // 添加结果并从待等待列表中移除
+            results.push_back(resp);
+            remainingIds.erase(std::find(remainingIds.begin(), remainingIds.end(), resp->taskId));
+        }
+        
+        return results;
+    }
+    
+    // 等待一组任务全部完成（带超时）
+    std::vector<ProcessRsp*> WaitForAllResponses(const std::vector<TaskId>& taskIds, 
+                                           const std::chrono::milliseconds& timeout) {
+        std::vector<ProcessRsp*> results;
+        std::vector<TaskId> remainingIds(taskIds);
+        
+        auto endTime = std::chrono::steady_clock::now() + timeout;
+        
+        while (!remainingIds.empty()) {
+            auto remainingTime = endTime - std::chrono::steady_clock::now();
+            if (remainingTime <= std::chrono::milliseconds::zero()) {
+                break; // 超时
+            }
+            
+            ProcessRsp* resp = nullptr;
+            bool success = responseQueue_.Take(
+                [&remainingIds](const ProcessRsp* r) { 
+                    return std::find(remainingIds.begin(), remainingIds.end(), r->taskId) != remainingIds.end(); 
+                }, 
+                resp, std::chrono::duration_cast<std::chrono::milliseconds>(remainingTime));
+                
+            if (!success) {
+                break; // 超时或队列关闭
+            }
+            
+            // 添加结果并从待等待列表中移除
+            results.push_back(resp);
+            remainingIds.erase(std::find(remainingIds.begin(), remainingIds.end(), resp->taskId));
+        }
+        
+        return results;
     }
     
     // 关闭线程池
@@ -425,17 +373,14 @@ public:
         // 关闭所有命名线程
         {
             std::lock_guard<std::mutex> lock(namedThreadsMutex_);
-            for (auto& [key, info] : namedThreads_) {
-                info.inQueue->Shutdown();
-                if (info.thread.joinable()) {
-                    info.thread.join();
+            for (auto& pair : namedThreads_) {
+                pair.second.inQueue->Shutdown();
+                if (pair.second.thread.joinable()) {
+                    pair.second.thread.join();
                 }
             }
             namedThreads_.clear();
         }
-        
-        // 清理响应等待器
-        responseWaiter_->Cleanup();
         
         initialized_ = false;
     }
@@ -443,21 +388,21 @@ public:
 private:
     // 工作线程函数
     void WorkerThread() {
-        Message* msg = nullptr;
-        while (sharedTaskQueue_.Pop(msg)) {
-            if (msg) {
-                messageCallback_(msg);
+        ProcessReq* req = nullptr;
+        while (sharedTaskQueue_.Pop(req)) {
+            if (req) {
+                requestCallback_(req);
             }
         }
     }
     
     // 命名工作线程函数
-    void NamedWorkerThread(std::shared_ptr<ThreadSafeQueue<Message*>> inQueue, 
-                           std::function<void(Message*)> callback) {
-        Message* msg = nullptr;
-        while (inQueue->Pop(msg)) {
-            if (msg) {
-                callback(msg);
+    void NamedWorkerThread(std::shared_ptr<ThreadSafeQueue<ProcessReq*>> inQueue, 
+                           std::function<void(ProcessReq*)> callback) {
+        ProcessReq* req = nullptr;
+        while (inQueue->Pop(req)) {
+            if (req) {
+                callback(req);
             }
         }
     }
@@ -469,19 +414,18 @@ private:
 private:
     struct NamedThreadInfo {
         std::thread thread;
-        std::shared_ptr<ThreadSafeQueue<Message*>> inQueue;
+        std::shared_ptr<ThreadSafeQueue<ProcessReq*>> inQueue;
     };
 
     bool initialized_{false};
     std::vector<std::thread> threads_;
-    ThreadSafeQueue<Message*> sharedTaskQueue_;
-    ThreadSafeQueue<Response*> responseQueue_;
-    std::unique_ptr<ResponseWaiter> responseWaiter_{std::make_unique<ResponseWaiter>(responseQueue_)};
+    ThreadSafeQueue<ProcessReq*> sharedTaskQueue_;
+    ThreadSafeQueue<ProcessRsp*> responseQueue_;
     
     std::mutex namedThreadsMutex_;
     std::unordered_map<std::string, NamedThreadInfo> namedThreads_;
     
-    std::function<void(Message*)> messageCallback_;
+    std::function<void(ProcessReq*)> requestCallback_;
 };
 
 //=============================================================================
@@ -497,8 +441,8 @@ public:
     }
     
     void Initialize(uint32_t threadCount) {
-        threadPool_.Initialize(threadCount, [this](Message* msg) {
-            this->ProcessMessage(msg);
+        threadPool_.Initialize(threadCount, [this](ProcessReq* req) {
+            this->ProcessRequest(req);
         });
     }
     
@@ -509,22 +453,22 @@ public:
         
         TaskId taskId = GenerateTaskId();
         
-        // 创建消息
-        Message* msg = new Message();
-        msg->taskId = taskId;
-        msg->taskName = taskName;
-        msg->taskFunction = task;
-        msg->context = &ctx;
+        // 创建请求
+        ProcessReq* req = new ProcessReq();
+        req->taskId = taskId;
+        req->taskName = taskName;
+        req->taskFunction = task;
+        req->context = &ctx;
         
         // 提交到线程池
-        threadPool_.SubmitToSharedQueue(msg);
+        threadPool_.SubmitToSharedQueue(req);
         
         return taskId;
     }
     
     void CreateNamedThread(const std::string& name, uint32_t index) {
-        threadPool_.CreateNamedThread(name, index, [this](Message* msg) {
-            this->ProcessMessage(msg);
+        threadPool_.CreateNamedThread(name, index, [this](ProcessReq* req) {
+            this->ProcessRequest(req);
         });
     }
     
@@ -537,15 +481,15 @@ public:
         
         TaskId taskId = GenerateTaskId();
         
-        // 创建消息
-        Message* msg = new Message();
-        msg->taskId = taskId;
-        msg->taskName = taskName;
-        msg->taskFunction = task;
-        msg->context = &ctx;
+        // 创建请求
+        ProcessReq* req = new ProcessReq();
+        req->taskId = taskId;
+        req->taskName = taskName;
+        req->taskFunction = task;
+        req->context = &ctx;
         
         // 提交到命名线程
-        threadPool_.SubmitToNamedThread(threadName, threadIndex, msg);
+        threadPool_.SubmitToNamedThread(threadName, threadIndex, req);
         
         return taskId;
     }
@@ -562,7 +506,7 @@ public:
     
     // 无限期等待特定任务
     AsyncResult WaitForTask(TaskId taskId) {
-        Response* resp = threadPool_.GetResponseWaiter().WaitForTask(taskId);
+        ProcessRsp* resp = threadPool_.WaitForResponse(taskId);
         if (!resp) {
             return AsyncResult("unknown", ProcessStatus::ERROR, taskId);
         }
@@ -573,10 +517,10 @@ public:
     }
     
     // 带超时的等待特定任务
-    AsyncResult WaitForTaskWithTimeout(TaskId taskId, std::chrono::milliseconds timeout) {
-        Response* resp = threadPool_.GetResponseWaiter().WaitForTaskWithTimeout(taskId, timeout);
+    AsyncResult WaitForTaskWithTimeout(TaskId taskId, const std::chrono::milliseconds& timeout) {
+        ProcessRsp* resp = threadPool_.WaitForResponse(taskId, timeout);
         if (!resp) {
-            return AsyncResult("unknown", ProcessStatus::ERROR, taskId);
+            return AsyncResult("timeout", ProcessStatus::ERROR, taskId);
         }
         
         AsyncResult result(resp->taskName, resp->status, resp->taskId);
@@ -586,12 +530,12 @@ public:
     
     // 等待一组任务全部完成
     std::vector<AsyncResult> WaitForAllTasks(const std::vector<TaskId>& taskIds) {
-        std::vector<Response*> responses = threadPool_.GetResponseWaiter().WaitForAllTasks(taskIds);
+        std::vector<ProcessRsp*> responses = threadPool_.WaitForAllResponses(taskIds);
         
         std::vector<AsyncResult> results;
         results.reserve(responses.size());
         
-        for (Response* resp : responses) {
+        for (ProcessRsp* resp : responses) {
             if (resp) {
                 results.emplace_back(resp->taskName, resp->status, resp->taskId);
                 delete resp;
@@ -604,15 +548,15 @@ public:
     // 带超时的等待一组任务全部完成
     std::vector<AsyncResult> WaitForAllTasksWithTimeout(
         const std::vector<TaskId>& taskIds, 
-        std::chrono::milliseconds timeout) {
+        const std::chrono::milliseconds& timeout) {
             
-        std::vector<Response*> responses = 
-            threadPool_.GetResponseWaiter().WaitForAllTasks(taskIds, timeout);
+        std::vector<ProcessRsp*> responses = 
+            threadPool_.WaitForAllResponses(taskIds, timeout);
         
         std::vector<AsyncResult> results;
         results.reserve(responses.size());
         
-        for (Response* resp : responses) {
+        for (ProcessRsp* resp : responses) {
             if (resp) {
                 results.emplace_back(resp->taskName, resp->status, resp->taskId);
                 delete resp;
@@ -624,7 +568,7 @@ public:
     
     // 等待任意一个任务完成
     AsyncResult WaitForAnyTask(const std::vector<TaskId>& taskIds) {
-        Response* resp = threadPool_.GetResponseWaiter().WaitForAnyTask(taskIds);
+        ProcessRsp* resp = threadPool_.WaitForAnyResponse(taskIds);
         if (!resp) {
             return AsyncResult("unknown", ProcessStatus::ERROR, 0);
         }
@@ -637,9 +581,9 @@ public:
     // 带超时的等待任意一个任务完成
     AsyncResult WaitForAnyTaskWithTimeout(
         const std::vector<TaskId>& taskIds, 
-        std::chrono::milliseconds timeout) {
+        const std::chrono::milliseconds& timeout) {
             
-        Response* resp = threadPool_.GetResponseWaiter().WaitForAnyTask(taskIds, timeout);
+        ProcessRsp* resp = threadPool_.WaitForAnyResponse(taskIds, timeout);
         if (!resp) {
             return AsyncResult("timeout", ProcessStatus::ERROR, 0);
         }
@@ -650,28 +594,28 @@ public:
     }
 
 private:
-    void ProcessMessage(Message* msg) {
+    void ProcessRequest(ProcessReq* req) {
         ProcessStatus status = ProcessStatus::ERROR;
         
         try {
-            status = msg->taskFunction(*msg->context);
+            status = req->taskFunction(*req->context);
         } catch (const std::exception& e) {
-            std::cerr << "Exception in task " << msg->taskName 
+            std::cerr << "Exception in task " << req->taskName 
                       << ": " << e.what() << std::endl;
         } catch (...) {
-            std::cerr << "Unknown exception in task " << msg->taskName << std::endl;
+            std::cerr << "Unknown exception in task " << req->taskName << std::endl;
         }
         
         // 创建响应
-        Response* resp = new Response();
-        resp->taskId = msg->taskId;
-        resp->taskName = msg->taskName;
+        ProcessRsp* resp = new ProcessRsp();
+        resp->taskId = req->taskId;
+        resp->taskName = req->taskName;
         resp->status = status;
         
         // 将响应放入响应队列
         threadPool_.QueueResponse(resp);
         
-        delete msg;
+        delete req;
     }
     
     static TaskId GenerateTaskId() {
@@ -687,31 +631,14 @@ private:
 // 示例用法
 //=============================================================================
 
-// 模拟ProcessContext类
-class ProcessContext {
-public:
-    // 模拟上下文实现
-    bool IsStopped() const { return stopped_; }
-    void Stop() { stopped_ = true; }
-    void TryStop() { 
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!stopped_) {
-            stopped_ = true;
-        }
-    }
-
-private:
-    bool stopped_{false};
-    std::mutex mutex_;
-};
-
 // 演示使用示例
 void DemoThreadPoolUsage() {
     ThreadPoolExecutor executor;
     executor.Initialize(4); // 初始化4个工作线程
     
     // 创建测试上下文
-    ProcessContext ctx;
+    DataContext dctx;
+    ProcessContext ctx{dctx};
     
     // 创建具名线程
     executor.CreateNamedThread("DemoThread", 0);
@@ -778,7 +705,8 @@ void DemoThreadPoolUsage() {
               << (raceResult.status == ProcessStatus::OK ? "OK" : "ERROR") << std::endl;
     
     // 等待所有竞争任务完成（清理）
-    executor.WaitForAllTasks(raceTasks);
+    std::vector<TaskId> leftTasks = {race2};
+    executor.WaitForAllTasks(leftTasks);
     
     std::cout << "\n=== 超时等待演示 ===" << std::endl;
     
