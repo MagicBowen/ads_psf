@@ -22,7 +22,9 @@ ProcessStatus RaceProcessor::Execute(ProcessContext& ctx) {
     auto innerCtx = ProcessContext::CreateSubContext(ctx);
 
     for (auto& processor : processors_) {
-        bool ret = executor_->Submit(processor->GetId(), [&innerCtx, &finalPromise, proc = processor.get()]() {
+        bool ret = executor_->SubmitDedicated(processor->GetId(), 
+            [&innerCtx, &finalPromise, proc = processor.get()]() 
+        {
             ProcessStatus status = proc->Process(innerCtx);
             if (status == ProcessStatus::OK) {
                 if (innerCtx.TryStop()) {

@@ -15,7 +15,9 @@ ProcessStatus ParallelProcessor::Execute(ProcessContext& ctx) {
     ProcessTaskIds taskIds;
 
     for (auto& processor : processors_) {
-        bool ret = executor_->Submit(processor->GetId(), [&ctx, proc = processor.get()]() {
+        bool ret = executor_->SubmitDedicated(processor->GetId(), 
+            [&ctx, proc = processor.get()]() 
+        {
             return proc->Process(ctx);
         });
         if (ret) {

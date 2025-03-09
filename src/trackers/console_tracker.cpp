@@ -12,7 +12,7 @@ void ConsoleTracker::ScheduleEnter() {
 
 void ConsoleTracker::ScheduleExit(ProcessStatus status) {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::cout << "============== Schedule End with status: " << status << " =============\n";
+    std::cout << "======= Schedule End with status: " << status << " ======\n";
 }
 
 void ConsoleTracker::ProcessEnter(const ProcessorInfo& info) {

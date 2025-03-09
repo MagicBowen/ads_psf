@@ -18,7 +18,7 @@ target_include_directories(${TEST_TARGET}
 
 target_link_libraries(${TEST_TARGET} PRIVATE ${TARGET_LIB})
 
-set_target_properties(${TEST_TARGET} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${TEST_TARGET} PROPERTIES CXX_STANDARD 14)
 
 # ---- Code coverage ----
 

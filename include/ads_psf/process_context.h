@@ -12,11 +12,19 @@ enum class ProcessStatus;
 
 struct ProcessContext {
     static ProcessContext CreateSubContext(ProcessContext& parentCtx) {
-        return ProcessContext(parentCtx.GetDataContext(), &parentCtx.stopFlag_, parentCtx.tracker_);
+        return std::move(ProcessContext{parentCtx.GetDataContext(), &parentCtx.stopFlag_, parentCtx.tracker_});
     }
     
     explicit ProcessContext(DataContext& dataCtx)
     : dataCtx_(dataCtx) {}
+
+    ProcessContext(ProcessContext&& other)
+        : dataCtx_(other.dataCtx_),
+          parentStopFlag_(other.parentStopFlag_),
+          tracker_(other.tracker_)
+    {
+        stopFlag_.store(other.stopFlag_.load());
+    }
 
     DataContext& GetDataContext() {
         return dataCtx_;

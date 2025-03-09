@@ -1,5 +1,5 @@
 # ---- Src dependencies ----
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 
 # CPMAddPackage(
 #     NAME cub
@@ -37,7 +37,7 @@ target_include_directories(${TARGET_LIB}
     PRIVATE ${PROJECT_SOURCE_DIR}/deps
 )
 
-set_target_properties(${TARGET_LIB} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${TARGET_LIB} PROPERTIES CXX_STANDARD 14)
 
 # ---- Add executable target ----
 

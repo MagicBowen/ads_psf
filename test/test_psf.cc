@@ -12,28 +12,27 @@ using namespace ads_psf;
 namespace {
     // DataContext 中跟踪算法执行过程的数据
     struct AlgoChecker {
-        void Record(const std::string& algo, const std::any& data) {
-            std::lock_guard lock{mutex_};
+        void Record(const std::string& algo, int data) {
+            std::lock_guard<std::mutex> lock{mutex_};
             algoDatas_.emplace_back(algo, data);
         }
     
         bool HasAlgo(const std::string& algo) const {
-            std::lock_guard lock{mutex_};
+            std::lock_guard<std::mutex> lock{mutex_};
             return std::any_of(algoDatas_.begin(), algoDatas_.end(), [&](const auto& pair) {
                 return pair.first == algo;
             });
         }
     
-        template<typename T>
-        bool HasAlgoData(const std::string& algo, const T& data) const {
-            std::lock_guard lock{mutex_};
+        bool HasAlgoData(const std::string& algo, int data) const {
+            std::lock_guard<std::mutex> lock{mutex_};
             return std::any_of(algoDatas_.begin(), algoDatas_.end(), [&](const auto& pair) {
-                return pair.first == algo && std::any_cast<T>(pair.second) == data;
+                return pair.first == algo && pair.second == data;
             });
         }
     
         bool IsAlgoAt(const std::string& algo, std::size_t pos) const {
-            std::lock_guard lock{mutex_};
+            std::lock_guard<std::mutex> lock{mutex_};
             auto it = std::find_if(algoDatas_.begin(), algoDatas_.end(), [&](const auto& pair) {
                 return pair.first == algo;
             });
@@ -41,20 +40,19 @@ namespace {
         }
     
         std::size_t Size() const {
-            std::lock_guard lock{mutex_};
+            std::lock_guard<std::mutex> lock{mutex_};
             return algoDatas_.size();
         }
     
-        template<typename T>
         void Print() const {
-            std::lock_guard lock{mutex_};
+            std::lock_guard<std::mutex> lock{mutex_};
             std::for_each(algoDatas_.begin(), algoDatas_.end(), [](const auto& pair) {
-                std::cout << pair.first << ": " << std::any_cast<T>(pair.second) << "\n";
+                std::cout << pair.first << ": " << pair.second << "\n";
             });
         }
     
     private:
-        std::vector<std::pair<std::string, std::any>> algoDatas_;
+        std::vector<std::pair<std::string, int>> algoDatas_;
         mutable std::mutex mutex_;
     };
 
@@ -258,7 +256,7 @@ TEST_CASE("Processor composite Test") {
     REQUIRE(checker->HasAlgo("MockAlgo6"));
 }
 
-TEST_CASE("DataParallelProcessor basic Test") {    
+TEST_CASE("DataParallelProcessor basic Test") {
     auto scheduler = SCHEDULER(
         DATA_PARALLEL(MyDatas, 5, PROCESS(DataReadAlgo)),
         EXECUTOR(StdAsyncExecutor),

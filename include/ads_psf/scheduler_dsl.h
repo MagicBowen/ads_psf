@@ -17,7 +17,11 @@ namespace ads_psf {
 template<typename PROCESSOR, typename EXECUTOR, typename ...TRACKERS>
 std::unique_ptr<Scheduler> MakeScheduler(PROCESSOR && processor, EXECUTOR && executor, TRACKERS&& ...trackers) {
     auto scheduler = std::make_unique<Scheduler>(std::forward<PROCESSOR>(processor), std::forward<EXECUTOR>(executor));
-    (scheduler->AddTracker(std::forward<TRACKERS>(trackers)), ...);
+
+    // 使用数组初始化列表辅助展开参数包
+    using expander = int[];
+    (void)expander{0, (scheduler->AddTracker(std::forward<TRACKERS>(trackers)), 0)...};
+
     return scheduler;
 }
 
@@ -41,7 +45,11 @@ auto ForwardRootProcessor(PROCESSOR1 && proc1, PROCESSOR2 && proc2, PROCESSORS&&
     auto processor = std::make_unique<SequentialProcessor>("root");
     processor->AddProcessor(std::forward<PROCESSOR1>(proc1));
     processor->AddProcessor(std::forward<PROCESSOR2>(proc2));
-    (processor->AddProcessor(std::forward<PROCESSORS>(procs)), ...);
+
+    // 使用数组初始化列表辅助展开参数包
+    using expander = int[];
+    (void)expander{0, (processor->AddProcessor(std::forward<PROCESSORS>(procs)), 0)...};
+
     return processor;
 }
 

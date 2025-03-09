@@ -25,7 +25,7 @@ private:
         auto innerCtx = ProcessContext::CreateSubContext(ctx);
 
         for (int i = 0; i < processors_.size(); i++) {
-            bool ret = executor_->Submit(processors_[i]->GetId(), 
+            bool ret = executor_->SubmitDedicated(processors_[i]->GetId(), 
                 [&innerCtx, &finalPromise, i, proc = processors_[i].get()]() 
             {
                 data_parallel::AutoSwitchId<DTYPE> switcher(i);

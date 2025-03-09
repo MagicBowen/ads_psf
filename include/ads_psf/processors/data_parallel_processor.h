@@ -18,7 +18,9 @@ private:
         ProcessTaskIds taskIds;
 
         for (int i = 0; i < processors_.size(); i++) {
-            bool ret = executor_->SubmitDedicated(processors_[i]->GetId(), [&ctx, i, proc = processors_[i].get()]() {
+            bool ret = executor_->SubmitDedicated(processors_[i]->GetId(), 
+                [&ctx, i, proc = processors_[i].get()]() 
+            {
                 data_parallel::AutoSwitchId<DTYPE> switcher(i);
                 return proc->Process(ctx);
             });

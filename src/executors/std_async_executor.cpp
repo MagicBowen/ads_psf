@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mutex>
 #include <list>
+#include <iostream>
 
 namespace ads_psf {
 
@@ -111,6 +112,15 @@ struct SyncQueue {
         return queue_.empty();
     }
 
+    void Dump() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::cout << "SyncQueue size: " << queue_.size() << " : ";
+        for (const auto& item : queue_) {
+            std::cout << item << ". ";
+        }
+        std::cout << std::endl;
+    }
+
 private:
     std::list<T> queue_; 
     bool shutdown_{false};
@@ -184,7 +194,6 @@ struct StdAsyncExecutor::ThreadPool {
             responseQueue_.Push(ProcessResult{req.taskId, ProcessStatus::ERROR});
             return;
         }
-        
         it->second.inQueue->Push(std::move(req));
     }
 
@@ -301,7 +310,7 @@ struct StdAsyncExecutor::ThreadPool {
                 thread.join();
             }
         }
-        
+
         {
             std::lock_guard<std::mutex> lock(namedThreadsMutex_);
             for (auto& pair : namedThreads_) {
@@ -312,7 +321,6 @@ struct StdAsyncExecutor::ThreadPool {
             }
             namedThreads_.clear();
         }
-        
         initialized_ = false;
     }
 
@@ -327,8 +335,16 @@ private:
     void NamedWorkerThread(std::shared_ptr<SyncQueue<ProcessRequest>> inQueue, 
                            ProcessReqHandler reqHandler) {
         ProcessRequest req = ProcessRequest::CreateDefault();
-        while (inQueue->Pop(req)) {
-            reqHandler(req);
+        while (true) {
+            bool popResult = inQueue->Pop(req);
+            if (!popResult) {
+                break;
+            }
+            try {
+                reqHandler(req);
+            } catch (...) {
+                QueueResponse(ProcessResult{req.taskId, ProcessStatus::ERROR});
+            }
         }
     }
 
@@ -351,19 +367,17 @@ private:
 
 StdAsyncExecutor::StdAsyncExecutor(uint32_t threadCount)
 : threadPool_(std::make_unique<ThreadPool>()) {
-    if (threadCount == 0) return;
     threadPool_->Initialize(threadCount, [this](ThreadPool::ProcessRequest& req) {
         threadPool_->QueueResponse(ProcessResult{req.taskId, req.task()});
     });
 }
 
-StdAsyncExecutor::~StdAsyncExecutor() {
-    threadPool_->Shutdown();
-}
+StdAsyncExecutor::~StdAsyncExecutor() = default;
 
 void StdAsyncExecutor::CreateDedicatedThread(const ProcessTaskId& id) {
     threadPool_->CreateNamedThread(id.ToString(), [this](ThreadPool::ProcessRequest& req) {
-        threadPool_->QueueResponse(ProcessResult{req.taskId, req.task()});
+        ProcessStatus status = req.task();
+        threadPool_->QueueResponse(ProcessResult{req.taskId, status});
     });
 }
 

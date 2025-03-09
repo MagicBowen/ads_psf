@@ -26,7 +26,11 @@ std::unique_ptr<Processor> MakeAlgoProcessor(const std::string& name, ALGO& algo
 template<typename GROUP_PROCESSOR, typename ...PROCESSORS>
 std::unique_ptr<Processor> MakeGroupProcessor(const std::string& name, PROCESSORS&& ...processors) {
     auto processor = std::make_unique<GROUP_PROCESSOR>(name);
-    (processor->AddProcessor(std::forward<PROCESSORS>(processors)), ...);
+
+    // 使用数组初始化列表辅助展开参数包
+    using expander = int[];
+    (void)expander{0, (processor->AddProcessor(std::forward<PROCESSORS>(processors)), 0)...};
+
     return processor;
 }
 

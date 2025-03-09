@@ -41,6 +41,7 @@ void TimingTracker::Dump() const {
         return;
     } 
     DumpProcessor(rootId, 0);
+    std::cout << "===========================================\n";
 }
 
 void TimingTracker::DumpProcessor(const ProcessorId& id, int level) const {
