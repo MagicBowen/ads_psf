@@ -57,10 +57,10 @@ void TimingTracker::DumpProcessor(const ProcessorId& id, int level) const {
     std::cout << indent << "[" << id.ToString() << "]: " << ms << " ms\n";
     
     std::vector<ProcessorId> children;
-    for (const auto& [possibleChildId, _] : timingData_) {
-        if (possibleChildId.GetDepth() == id.GetDepth() + 1 && 
-            possibleChildId.GetParent() == id) {
-            children.push_back(possibleChildId);
+    for (const auto& item : timingData_) {
+        if (item.first.GetDepth() == id.GetDepth() + 1 && 
+            item.first.GetParent() == id) {
+            children.push_back(item.first);
         }
     }
 
