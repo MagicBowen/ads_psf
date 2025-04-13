@@ -16,11 +16,11 @@ namespace ads_psf {
 
 template<typename PROCESSOR, typename EXECUTOR, typename ...TRACKERS>
 std::unique_ptr<Scheduler> MakeScheduler(PROCESSOR && processor, EXECUTOR && executor, TRACKERS&& ...trackers) {
-    auto scheduler = std::make_unique<Scheduler>(std::forward<PROCESSOR>(processor), std::forward<EXECUTOR>(executor));
+    auto scheduler = std::make_unique<Scheduler>(std::move(processor), std::move(executor));
 
     // 使用数组初始化列表辅助展开参数包
     using expander = int[];
-    (void)expander{0, (scheduler->AddTracker(std::forward<TRACKERS>(trackers)), 0)...};
+    (void)expander{0, (scheduler->AddTracker(std::move(trackers)), 0)...};
 
     return scheduler;
 }
@@ -56,7 +56,7 @@ auto ForwardRootProcessor(PROCESSOR1 && proc1, PROCESSOR2 && proc2, PROCESSORS&&
 }
 
 #define SCHEDULER(PROCESSOR, EXECUTOR, ...)  \
-ads_psf::MakeScheduler(std::move(PROCESSOR), std::move(EXECUTOR), ##__VA_ARGS__)
+ads_psf::MakeScheduler(PROCESSOR, EXECUTOR, ##__VA_ARGS__)
 
 #define PROCESSOR(...)                      \
 ads_psf::ForwardRootProcessor(__VA_ARGS__)
