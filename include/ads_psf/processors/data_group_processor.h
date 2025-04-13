@@ -22,7 +22,7 @@ private:
         Processor::Init(parentInfo, childIndex, executor);
 
         for (uint32_t i = 0; i < N; ++i) {
-            auto processor = factory_();
+            auto processor = factory_(i);
             processor->Init(ProcessorInfo{name_, id_}, i + 1, executor);
             processors_.push_back(std::move(processor));
             executor_->CreateDedicatedThread(processors_.back()->GetId());

@@ -3,6 +3,8 @@
 
 namespace ads_psf {
 
-using ProcessorFactory = std::function<std::unique_ptr<Processor>()>;
+using ProcessorAlgoRefId = uint32_t;
+
+using ProcessorFactory = std::function<std::unique_ptr<Processor>(ProcessorAlgoRefId)>;
 
 } // namespace ads_psf

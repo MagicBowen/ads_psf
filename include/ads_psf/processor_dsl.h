@@ -56,10 +56,15 @@ ads_psf::MakeGroupProcessor<ads_psf::ParallelProcessor>("parallel", __VA_ARGS__)
 #define RACE(...)                           \
 ads_psf::MakeGroupProcessor<ads_psf::RaceProcessor>("race", __VA_ARGS__)
 
+#define PROCESS_REF_ARR(ALGO_ARR)           \
+ads_psf::MakeAlgoProcessor(#ALGO_ARR, ALGO_ARR[_ALGO_REF_ID])
+
 #define DATA_PARALLEL(DTYPE, N, ...)        \
-ads_psf::MakeDataGroupProcessor<ads_psf::DataParallelProcessor, DTYPE, N>("data_parallel", [&]() { return __VA_ARGS__; })
+ads_psf::MakeDataGroupProcessor<ads_psf::DataParallelProcessor, DTYPE, N>("data_parallel",  \
+    [&](ProcessorAlgoRefId _ALGO_REF_ID) { return __VA_ARGS__; })
 
 #define DATA_RACE(DTYPE, N, ...)            \
-ads_psf::MakeDataGroupProcessor<ads_psf::DataRaceProcessor, DTYPE, N>("data_race", [&]() { return __VA_ARGS__; })
+ads_psf::MakeDataGroupProcessor<ads_psf::DataRaceProcessor, DTYPE, N>("data_race",          \
+    [&](ProcessorAlgoRefId _ALGO_REF_ID) { return __VA_ARGS__; })
 
 #endif // ADS_PSF_PROCESSOR_FACTORY_H

@@ -319,6 +319,43 @@ TEST_CASE("DataParallelProcessor complex Test") {
     REQUIRE(checker->HasAlgoData("DataReadAlgo", 6));
 }
 
+TEST_CASE("DataParallelProcessor ref algo array Test") {
+    constexpr int N = 3;
+
+    DataWriteAlgo dataWriteAlgos[N];
+    DataReadAlgo dataReadAlgos[N];
+
+    auto scheduler = SCHEDULER(
+        DATA_PARALLEL(MyDatas, N, 
+            SEQUENCE(
+                PROCESS_REF_ARR(dataWriteAlgos),
+                PROCESS_REF_ARR(dataReadAlgos)
+            )
+        ),
+        EXECUTOR(StdAsyncExecutor),
+        TRACKER(ConsoleTracker),
+        TRACKER(TimingTracker)
+    );
+    
+    DataContext dataCtx;
+    dataCtx.Create<AlgoChecker>();
+    dataCtx.Create<MyDatas>(1, 2, 3);
+
+    auto status = scheduler->Run(dataCtx);
+    REQUIRE(status == ProcessStatus::OK);
+
+    auto checker = dataCtx.Fetch<AlgoChecker>();
+    REQUIRE(checker->Size() == 6);
+
+    REQUIRE(checker->HasAlgoData("DataWriteAlgo", 1));
+    REQUIRE(checker->HasAlgoData("DataWriteAlgo", 2));
+    REQUIRE(checker->HasAlgoData("DataWriteAlgo", 3));
+   
+    REQUIRE(checker->HasAlgoData("DataReadAlgo", 2));
+    REQUIRE(checker->HasAlgoData("DataReadAlgo", 4));
+    REQUIRE(checker->HasAlgoData("DataReadAlgo", 6));
+}
+
 TEST_CASE("DataRaceProcessor basic Test") {
     auto scheduler = SCHEDULER(
         DATA_RACE(MyDatas, 5, 
